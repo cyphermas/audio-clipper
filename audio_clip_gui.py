@@ -416,8 +416,14 @@ class AudioClipperApp:
                 offset = self.start_time
             
             # 导出临时 wav（pygame 兼容性最好）
-            temp_path = os.path.join(self.temp_dir, "temp_play.wav")
+            # 使用唯一文件名，避免 Windows 文件占用冲突
+            import time
+            temp_name = f"temp_play_{int(time.time() * 1000)}.wav"
+            temp_path = os.path.join(self.temp_dir, temp_name)
             segment.export(temp_path, format="wav")
+            
+            # 清理旧的临时播放文件
+            self._cleanup_temp_play_files()
             self.temp_play_file = temp_path
             
             pygame.mixer.music.load(temp_path)
@@ -433,9 +439,28 @@ class AudioClipperApp:
     def _stop(self):
         """停止播放"""
         pygame.mixer.music.stop()
+        # pygame 2.0+ 支持 unload，释放文件句柄（Windows 必需）
+        if hasattr(pygame.mixer.music, 'unload'):
+            pygame.mixer.music.unload()
         self.playing = False
         self.play_line.set_visible(False)
         self.canvas.draw_idle()
+    
+    def _cleanup_temp_play_files(self):
+        """清理旧的临时播放文件"""
+        try:
+            for f in os.listdir(self.temp_dir):
+                if f.startswith("temp_play_") and f.endswith(".wav"):
+                    fp = os.path.join(self.temp_dir, f)
+                    # 跳过当前正在播放的文件
+                    if fp == getattr(self, 'temp_play_file', None):
+                        continue
+                    try:
+                        os.remove(fp)
+                    except OSError:
+                        pass
+        except Exception:
+            pass
     
     def _schedule_playback_update(self):
         """定时更新播放进度"""
