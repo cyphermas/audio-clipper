@@ -170,6 +170,7 @@ class AudioClipperApp:
         # 播放进度条
         self.progress = ttk.Scale(self.root, from_=0, to=1000, orient=tk.HORIZONTAL, state=tk.DISABLED)
         self.progress.pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=2)
+        self.progress.bind("<ButtonRelease-1>", self._on_seek)
         self.lbl_progress = ttk.Label(self.root, text="00:00 / 00:00")
         self.lbl_progress.pack(side=tk.BOTTOM, anchor=tk.W, padx=10)
     
@@ -462,6 +463,48 @@ class AudioClipperApp:
         except Exception:
             pass
     
+    def _on_seek(self, event=None):
+        """拖动进度条跳转到指定位置播放"""
+        if self.audio is None:
+            return
+        pos = self.progress.get()
+        self._seek_and_play(pos)
+    
+    def _seek_and_play(self, pos):
+        """从指定秒数开始播放"""
+        if self.audio is None:
+            return
+        pos = max(0, min(pos, self.duration))
+        self._stop()
+        
+        try:
+            start_ms = int(pos * 1000)
+            segment = self.audio[start_ms:]
+            
+            # 先清理旧文件
+            self._cleanup_temp_play_files()
+            
+            # 导出临时 wav
+            import time
+            temp_name = f"temp_play_{int(time.time() * 1000)}.wav"
+            temp_path = os.path.join(self.temp_dir, temp_name)
+            segment.export(temp_path, format="wav")
+            self.temp_play_file = temp_path
+            
+            pygame.mixer.music.load(temp_path)
+            pygame.mixer.music.play()
+            self.playing = True
+            self.play_offset = pos
+            self.play_start_time = pygame.time.get_ticks()
+            self.play_line.set_visible(True)
+            
+            # 同步进度条和标签
+            self.progress.set(pos)
+            self.lbl_progress.config(text=f"{self._sec_to_str(pos)} / {self._sec_to_str(self.duration)}")
+            
+        except Exception as e:
+            messagebox.showerror("跳转失败", f"{e}")
+    
     def _schedule_playback_update(self):
         """定时更新播放进度"""
         if self.playing and pygame.mixer.music.get_busy():
@@ -472,12 +515,17 @@ class AudioClipperApp:
             self.play_line.set_visible(True)
             self.canvas.draw_idle()
             
+            # 强制刷新进度条显示
             self.progress.set(current)
+            self.progress.update_idletasks()
             self.lbl_progress.config(text=f"{self._sec_to_str(current)} / {self._sec_to_str(self.duration)}")
         elif self.playing and not pygame.mixer.music.get_busy():
             self.playing = False
             self.play_line.set_visible(False)
             self.canvas.draw_idle()
+            # 播放结束时进度条归到实际末尾
+            self.progress.set(self.duration)
+            self.lbl_progress.config(text=f"{self._sec_to_str(self.duration)} / {self._sec_to_str(self.duration)}")
         
         self.root.after(100, self._schedule_playback_update)
     
