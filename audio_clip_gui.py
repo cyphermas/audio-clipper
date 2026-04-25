@@ -415,15 +415,15 @@ class AudioClipperApp:
                 segment = self.audio[start_ms:end_ms]
                 offset = self.start_time
             
+            # 先清理旧的临时播放文件（必须在 export 之前，否则会误删刚创建的文件）
+            self._cleanup_temp_play_files()
+            
             # 导出临时 wav（pygame 兼容性最好）
             # 使用唯一文件名，避免 Windows 文件占用冲突
             import time
             temp_name = f"temp_play_{int(time.time() * 1000)}.wav"
             temp_path = os.path.join(self.temp_dir, temp_name)
             segment.export(temp_path, format="wav")
-            
-            # 清理旧的临时播放文件
-            self._cleanup_temp_play_files()
             self.temp_play_file = temp_path
             
             pygame.mixer.music.load(temp_path)
